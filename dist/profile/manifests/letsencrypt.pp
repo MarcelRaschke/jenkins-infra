@@ -3,9 +3,13 @@
 class profile::letsencrypt {
   class { '::letsencrypt':
     config => {
-        email  => hiera('letsencrypt::config::email'),
-        server => hiera('letsencrypt::config::server'),
+        email  => lookup('letsencrypt::config::email'),
+        server => lookup('letsencrypt::config::server'),
     }
+  }
+
+  package { 'python-certbot-apache':
+    ensure => present
   }
 
   cron { 'letsencrypt-renew-reload':

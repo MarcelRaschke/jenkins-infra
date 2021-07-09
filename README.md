@@ -6,6 +6,37 @@ This repository is the [r10k](https://github.com/adrienthebo/r10k) control
 repository for the [Jenkins](https://jenkins.io) project's own
 infrastructure.
 
+## Structure
+
+See the [Jenkins infrastructure project](https://jenkins.io/projects/infrastructure/) for overview of the project's infrastructure and the services being managed by this repository.
+A non exhaustive list of services is available [here](https://jenkins.io/projects/infrastructure/#services).
+
+### Implementation notes
+
+* The services are managed [r10k](https://github.com/adrienthebo/r10k) and Puppet,
+  configuration files are available inside this repository.
+* There are multiple types of service deployments:
+  * The majority of services run as containers inside Kubernetes, and it is a precondition for new services.
+  * Some services like ci.jenkins.io run inside virtual machines provisioned insideMicrosoft Azure.
+  * Some older services like Jenkins JIRA or Wiki run on machines outside Azure.
+* There are Puppet templates for all services.
+  Configuration options are defined by Hiera and stored in [hieradata](./hieradata).
+  See [hieradata/common.yaml](./hieradata/common.yaml) for the most of the settings.
+* Not all services are fully configured with Configuration-as-Code.
+  For example, Jenkins masters ([buildmaster template](./dist/profile/manifests/buildmaster.pp)) rely on configurations being supplied from Jenkins home directories.
+
+### Containerized services
+
+All containerized services are stored in separate repositories ([Plugin Site](https://plugins.jenkins.io/), [IRC Bot](https://jenkins.io/projects/infrastructure/ircbot/), etc.).
+They have their own release cycles and maintainers.
+This repo just manages and configures the deployments.
+
+* See [this page](https://jenkins.io/projects/infrastructure/#services) for service repository links.
+* Service images are hosted inside the [jenkinsciinfra DockerHub account](https://hub.docker.com/r/jenkinsciinfra/).
+* Usually there is a Continuous Delivery pipeline configured for services inside their repositories.
+* Image versions are defined in the [hieradata/common.yaml](./hieradata/common.yaml) file by the `*:image_tag` variables.
+  Services can be updated by submitting a pull request with the version update.
+
 ## Local development
 
 The amount of testing that can be done locally is as follows:
@@ -23,13 +54,6 @@ The amount of testing that can be done locally is as follows:
 
 #### Pre-requisites
 
- * Import your SSH public key into a [key
-   pair](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html)
-   into the `us-west-2` region. We have an AMI in us-west-2 that has Ubuntu 12.04,
-   Puppet and a Docker-capable kernel installed for testing
- * Make sure your `default` [security
-   group](http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-network-security.html)
-   allows SSH (port 22) from the outside world.
  * Run the `./vagrant-bootstrap` script locally to make sure your local
    environment is prepared for Vagranting
 
@@ -43,7 +67,7 @@ catalog on a VM.
 ##### Pre-requisites
 
 * Install [Vagrant](https://www.vagrantup.com)
-* Install Vagrant plugins: `vagrant plugin install vagrant-aws  vagrant-serverspec`
+* Install Vagrant plugins: `vagrant plugin install vagrant-serverspec`
 
 To launch a test instance, `vagrant up ROLE` where `ROLE` is [one of the defined roles](dist/role/manifests).
 You can rerun puppet and execute tests with `vagrant provision ROLE` repeatedly while the VM is up and running.
@@ -109,6 +133,10 @@ manifest = ./manifests/site.pp
 ```
 
 ## Contributing
+
+See [this page](https://github.com/jenkins-infra/.github/blob/master/CONTRIBUTING.md) for the overview and links.
+
+Channels:
 
 * `#jenkins-infra` on the [Freenode](http://freenode.net) IRC network
 *  [INFRA project](https://issues.jenkins-ci.org/browse/INFRA) in JIRA.

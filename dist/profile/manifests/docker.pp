@@ -2,11 +2,6 @@
 # Profile for managing basics of docker installation/configuration
 class profile::docker {
   class { '::docker':
-    # Disabling the management of the kernel, since we have to pre-install
-    # kernel modules on Ubuntu 14.04 LTS and restart the host machine anyways
-    manage_kernel    => false,
-    extra_parameters => '--storage-driver=aufs',
-    require          => Package['linux-image-extra'],
   }
 
   include datadog_agent::integrations::docker_daemon
@@ -25,8 +20,16 @@ class profile::docker {
     action  => 'accept',
   }
 
-  package { 'linux-image-extra':
+  ['lxcfs', 'lxd', 'lxd-client', 'liblxc-common', 'liblxc1'].each | $package | {
+    package { $package:
+      ensure => 'purged',
+    }
+  }
+
+  file { '/etc/docker/daemon.json':
     ensure => present,
-    name   => "linux-image-extra-${::kernelrelease}",
+    source => "puppet:///modules/${module_name}/docker/daemon.json",
+    mode   => '0644',
+    notify => Service['docker'],
   }
 }

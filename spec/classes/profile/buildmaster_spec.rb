@@ -9,11 +9,19 @@ describe 'profile::buildmaster' do
   end
 
   context 'Jenkins configuration' do
-    it { should contain_class 'jenkins' }
+    it { is_expected.to contain_user('jenkins').with(
+        'ensure' => 'present',
+        'home'   => '/var/lib/jenkins'
+      )
+    }
+
+    it { is_expected.to contain_group('jenkins').with(
+        'ensure' => 'present',
+      )
+    }
 
     # https://issues.jenkins-ci.org/browse/INFRA-916
     context 'as a Docker container' do
-      it { should contain_package('jenkins').with_ensure('absent') }
       it { should contain_file('/var/lib/jenkins').with_ensure('directory') }
       it { should contain_class 'profile::docker' }
 
@@ -25,16 +33,27 @@ describe 'profile::buildmaster' do
       end
     end
 
+    context 'Init groovy script' do
+      it { is_expected.to contain_file('/var/lib/jenkins/init.groovy.d').with(
+          'ensure' => 'directory',
+          'purge'  => 'true',
+          'recurse' => 'true'
+        )
+      }
+      context "By default: Init Groovy directory" do
+        it { is_expected.not_to contain_file('/var/lib/jenkins/init.groovy.d/enable-ssh-port.groovy')}
+        it { is_expected.not_to contain_file('/var/lib/jenkins/init.groovy.d/set-up-git.groovy')}
+        it { is_expected.not_to contain_file('/var/lib/jenkins/init.groovy.d/agent-security.groovy')}
+        it { is_expected.not_to contain_file('/var/lib/jenkins/init.groovy.d/terraform-credentials.groovy')}
+        it { is_expected.not_to contain_file('/var/lib/jenkins/init.groovy.d/pipeline-configuration.groovy')}
+      end
+    end
+
+
+
     # Resources which ensure that we can run our local CLI scripting
     context 'Local CLI access' do
-      it { should contain_file('/var/lib/jenkins/init.groovy.d').with_ensure(:directory) }
-      it { should contain_file('/var/lib/jenkins/.ssh').with_ensure(:directory) }
-
-      context 'init.groovy.d' do
-        it { should contain_file('/var/lib/jenkins/init.groovy.d/enable-ssh-port.groovy') }
-        it { should contain_file('/var/lib/jenkins/init.groovy.d/set-up-git.groovy') }
-        it { should contain_file('/var/lib/jenkins/init.groovy.d/terraform-credentials.groovy') }
-      end
+      it { is_expected.to contain_file('/var/lib/jenkins/.ssh') }
     end
   end
 
@@ -45,7 +64,7 @@ describe 'profile::buildmaster' do
   context 'JNLP' do
     it 'should open the JNLP port in the firewall' do
       expect(subject).to contain_firewall('803 Expose JNLP port').with({
-        :port => 50000,
+        :dport => 50000,
         :proto => 'tcp',
         :action => 'accept',
       })
@@ -125,20 +144,20 @@ describe 'profile::buildmaster' do
 
     it 'should have a CLI port rule' do
       expect(subject).to contain_firewall('108 Jenkins CLI port').with({
-        :port => 47278,
+        :dport => 47278,
         :action => :accept,
       })
     end
 
     it 'should ensure nothing talks directly to Jenkins' do
       expect(subject).to contain_firewall('801 Allow Jenkins web access only on localhost').with({
-        :port => 8080,
+        :dport => 8080,
         :action => :accept,
         :iniface => 'lo',
       })
 
       expect(subject).to contain_firewall('802 Block external Jenkins web access').with({
-        :port => 8080,
+        :dport => 8080,
         :action => :drop,
       })
 
@@ -146,7 +165,7 @@ describe 'profile::buildmaster' do
 
     it 'should allow CLI SSH on 22222' do
       expect(subject).to contain_firewall('810 Jenkins CLI SSH').with({
-        :port => 22222,
+        :dport => 22222,
         :action => :accept,
       })
     end

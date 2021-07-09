@@ -1,24 +1,14 @@
 #
 # Defines an archive server for serving all the archived historical releases
 #
-class profile::archives {
+class profile::archives (
+    Array  $rsync_hosts_allow  = ['localhost'],
+    String $archives_dir       = '/srv/releases',
+    String $rsync_motd_file    = '/etc/jenkins.motd'
+  ) {
   include ::stdlib
-  # volume configuration is in hiera
-  include ::lvm
   include profile::apachemisc
-
-  $archives_dir = '/srv/releases'
-
-  if str2bool($::vagrant) {
-    # during serverspec test, fake /dev/xvdb by a loopback device
-    exec { 'create /tmp/xvdb':
-      command => 'dd if=/dev/zero of=/tmp/xvdb bs=1M count=16; losetup /dev/loop0; losetup /dev/loop0 /tmp/xvdb',
-      unless  => 'test -f /tmp/xvdb',
-      path    => '/usr/bin:/usr/sbin:/bin:/sbin',
-      before  => Physical_volume['/dev/loop0'],
-    }
-  }
-
+  include profile::letsencrypt
 
   package { 'lvm2':
     ensure => present,
@@ -28,16 +18,17 @@ class profile::archives {
     ensure => present,
   }
 
-
   file { $archives_dir:
     ensure  => directory,
     owner   => 'www-data',
-    require => [Package['httpd'],
-                Mount[$archives_dir]],
+    require => Package['httpd'],
   }
 
-
   file { '/var/log/apache2/archives.jenkins-ci.org':
+    ensure => directory,
+  }
+
+  file { '/var/log/apache2/archives.jenkins.io':
     ensure => directory,
   }
 
@@ -45,7 +36,7 @@ class profile::archives {
     require => Package['libapache2-mod-bw'],
   }
 
-  apache::vhost { 'archives.jenkins-ci.org':
+  apache::vhost { 'archives.jenkins-ci.org non-ssl':
     servername      => 'archives.jenkins-ci.org',
     vhost_name      => '*',
     port            => '80',
@@ -57,7 +48,103 @@ class profile::archives {
     options         => ['FollowSymLinks', 'MultiViews', 'Indexes'],
     notify          => Service['apache2'],
     require         => [File['/var/log/apache2/archives.jenkins-ci.org'],
-                        Mount[$archives_dir],
+                        File[$archives_dir],
                         Apache::Mod['bw']],
   }
+
+  apache::vhost { 'archives.jenkins-ci.org':
+    port            => '443',
+    ssl             =>  true,
+    docroot         => $archives_dir,
+    access_log      => false,
+    error_log_file  => 'archives.jenkins-ci.org/error.log',
+    log_level       => 'warn',
+    custom_fragment => template("${module_name}/archives/vhost.conf"),
+
+    notify          => Service['apache2'],
+    require         => File['/var/log/apache2/archives.jenkins-ci.org'],
+  }
+
+
+  apache::vhost { 'archives.jenkins.io non-ssl':
+    # redirect non-SSL to SSL
+    servername      => 'archives.jenkins.io',
+    port            => '80',
+    docroot         => $archives_dir,
+    redirect_status => 'temp',
+    redirect_dest   => 'https://archives.jenkins.io'
+  }
+
+  apache::vhost { 'archives.jenkins.io':
+    port            => '443',
+    ssl             =>  true,
+    docroot         => $archives_dir,
+    access_log      => false,
+    error_log_file  => 'archives.jenkins.io/error.log',
+    log_level       => 'warn',
+    custom_fragment => template("${module_name}/archives/vhost.conf"),
+
+    notify          => Service['apache2'],
+    require         => File['/var/log/apache2/archives.jenkins-ci.org'],
+  }
+
+  # We can only acquire certs in production due to the way the letsencrypt
+  # challenge process works
+  if (($::environment == 'production') and ($::vagrant != '1')) {
+    letsencrypt::certonly { 'archives.jenkins.io':
+        domains     => ['archives.jenkins.io','archives.jenkins-ci.org'],
+        plugin      => 'apache',
+        manage_cron => true,
+    }
+    Apache::Vhost <| title == 'archives.jenkins.io' |> {
+    # When Apache is upgraded to >= 2.4.8 this should be changed to
+    # fullchain.pem
+      ssl_key       => '/etc/letsencrypt/live/archives.jenkins.io/privkey.pem',
+      ssl_cert      => '/etc/letsencrypt/live/archives.jenkins.io/fullchain.pem',
+      ssl_chain     => '/etc/letsencrypt/live/archives.jenkins.io/chain.pem',
+    }
+    Apache::Vhost <| title == 'archives.jenkins-ci.org' |> {
+      ssl_key       => '/etc/letsencrypt/live/archives.jenkins.io/privkey.pem',
+      ssl_cert      => '/etc/letsencrypt/live/archives.jenkins.io/fullchain.pem',
+      ssl_chain     => '/etc/letsencrypt/live/archives.jenkins.io/chain.pem',
+    }
+  }
+
+  # Install Rsync
+  #
+  # Rsync is needed by mirrorbits to access file metadata
+  # It's a requirement to use archives.jenkins.io as
+  # a fallback mirror from get.jenkins.io
+  #
+  package { 'rsync':
+    ensure => present,
+  }
+
+  file { '/etc/rsyncd.conf':
+    ensure  => present,
+    content => template("${module_name}/archives/rsyncd.conf.erb"),
+    owner   => 'root',
+    mode    => '0600',
+    require => Package['rsync'],
+  }
+
+  file { $rsync_motd_file:
+    ensure  => present,
+    source  => "puppet:///modules/${module_name}/archives/jenkins.motd",
+    owner   => 'root',
+    mode    => '0644',
+    require => Package['rsync'],
+  }
+
+  service { 'rsync':
+    ensure => running,
+    enable => true
+  }
+
+  firewall { '100 all inbound rsync':
+    proto  => 'tcp',
+    dport  => '873',
+    action => 'accept'
+  }
+
 }

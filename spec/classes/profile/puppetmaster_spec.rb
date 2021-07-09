@@ -13,16 +13,6 @@ describe 'profile::puppetmaster' do
   context 'puppet.conf' do
     let(:path) { '/etc/puppetlabs/puppet/puppet.conf' }
 
-    it 'should enable report handlers' do
-      expect(subject).to contain_ini_setting('update report handlers').with({
-        :ensure => 'present',
-        :path => path,
-        :section => 'master',
-        :setting => 'reports',
-        :value => 'console,puppetdb,irc,datadog_reports',
-      })
-    end
-
     it 'should enable pluginsync on the master' do
       expect(subject).to contain_ini_setting('enable master pluginsync').with({
         :ensure => 'present',
@@ -35,23 +25,17 @@ describe 'profile::puppetmaster' do
   end
 
   it { should contain_file('/etc/puppetlabs/puppet/hiera.yaml') }
-  it { should contain_firewall('010 allow dashboard traffic').with_action('accept').with_port(443) }
-  it { should contain_firewall('012 allow puppet agents').with_action('accept').with_port(8140) }
-  it { should contain_firewall('013 allow mcollective').with_action('accept').with_port(61613) }
+  it { should contain_firewall('010 allow dashboard traffic').with_action('accept').with_dport(443) }
+  it { should contain_firewall('012 allow puppet agents').with_action('accept').with_dport(8140) }
+  it { should contain_firewall('013 allow mcollective').with_action('accept').with_dport(61613) }
 
-  context 'setting up the irc reporter' do
-    it { should contain_class 'irc' }
-  end
+  # Disable this test until [INFRA-2006] is addressed
+  #context 'setting up the irc reporter' do
+  #  it { should contain_class 'irc' }
+  #end
 
   context 'the datadog_agent module' do
     it { should contain_class 'datadog_agent' }
-
-    context 'puppet reporting' do
-      # Needed for reporting Puppet run reports to datadog
-      it { should contain_package 'dogapi' }
-
-      it { should contain_file('/etc/dd-agent/datadog.yaml') }
-    end
   end
 
   it { should contain_package 'deep_merge' }
