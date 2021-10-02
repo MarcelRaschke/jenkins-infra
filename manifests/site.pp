@@ -31,6 +31,10 @@ node default {
   include profile::base
 }
 
+# archives
+node 'archives.jenkins.io' {
+  include role::archives
+}
 
 # radish
 node 'puppet.jenkins.io' {
@@ -133,6 +137,11 @@ node 'ci' {
   include role::jenkins::master
 }
 
+node 'azure.ci.jenkins.io' {
+  sshkeyman::hostkey { ['azure.ci.jenkins.io']: }
+  include role::jenkins::master
+}
+
 node /^agent-\d+$/ {
   include role::jenkins::agent
 }
@@ -143,12 +152,22 @@ node 'trusted-ci' {
   include role::jenkins::master
 }
 
+node 'cert-ci' {
+  sshkeyman::hostkey { ['cert.ci.jenkins.io']: }
+  include role::jenkins::master
+}
+
 node /^trusted-agent-\d+$/ {
   notice('This agent is trusted!')
   $hiera_role = 'trustedagent'
   include role::census::agent
   include role::updatecenter
 
+}
+
+node 'vpn.jenkins.io' {
+  sshkeyman::hostkey { ['vpn.jenkins.io']: }
+  include role::openvpn
 }
 
 node 'bounce' {
