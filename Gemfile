@@ -4,7 +4,7 @@ gem 'rake'
 gem 'rspec-puppet'
 gem 'parallel_tests'
 # Needed for integration tests
-gem 'beaker'
+gem 'beaker', '>= 2.52.0'
 # This gem is like, never released
 gem 'puppet-lint', '~>2.3.0'
 gem 'puppet', '~> 4.8'
